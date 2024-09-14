@@ -27,8 +27,13 @@ def split_image(image):
                 input = i.read()
                 output = remove(input)
                 o.write(output)
-                obj[f'img_{i}'] = o.read()
-    
+
+            with Image.open(output_path) as image:
+                cover = resizeimage.resize_contain(image, [24, 24])
+                cover.save(output_path, image.format)
+        
+        with open(output_path, 'rb') as o:
+            obj[f'img_{i}'] = o.read()
     return obj
 
 @csrf_exempt
