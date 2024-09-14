@@ -95,7 +95,8 @@ def get_assets(request):
         
         data = json.loads(request.body)
         print(data)
-        prompt = data.get('enemies', '').strip()
+        prompt = f"I want a {data.get('genre', '').strip()} themed {data.get('enemies', '').strip()} enemy for an 16-bit retro video game. The enemy should be in a 16-bit style I want only the enemy to be in the image. I want the resolution for each image to be 256 pixels by 256 pixels. It should have a white background with nothing in it. No additional particles or effects. I want the enemy to be facing forward as if it was looking at something outside of the border of the image"
+        
         if not prompt:
             return JsonResponse({'error': 'No prompt provided.'}, status=400)
 
