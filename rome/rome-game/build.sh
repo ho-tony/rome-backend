@@ -1,6 +1,15 @@
 #!/bin/bash
 
-npm run build
+echo "running script"
+
+which npm
+echo "node version $(node -v)"
+echo "npm version $(npm -v)"
+
+cd rome-game
+echo "cwd $(pwd)"
+
+npm run build --verbose
 
 # Exit immediately if a command exits with a non-zero status
 set -e

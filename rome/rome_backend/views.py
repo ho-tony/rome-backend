@@ -19,6 +19,8 @@ from rembg import remove
 from PIL import Image
 from resizeimage import resizeimage
 
+import subprocess
+
 # def get_images(image):
 #     split_image(image[0], 2, 2, False, False)
 
@@ -52,7 +54,7 @@ def get_images(image):
 
     for i in range(4):
         input_path = f'{image[1][:len(image[1])-4]}_{i}.png'
-        output_path = f'output_{i}.png'
+        output_path = f'big_{i}.png'
         print(f"Processing: Input: {input_path}, Output: {output_path}")
         
         try:
@@ -68,15 +70,25 @@ def get_images(image):
             
             # Resize image
             with Image.open(output_path) as img:
-                cover = resizeimage.resize_contain(img, [24, 24])
+                cover = resizeimage.resize_contain(img, [1024, 1024])
                 cover.save(output_path, img.format)
+                cover = resizeimage.resize_contain(img, [24, 24])
+                cover.save(f'small_{i}.png', img.format)
             
             print(f'Resized image {i}')
             
             # Read the processed image and encode it as base64
             with open(output_path, 'rb') as o:
                 img_data = base64.b64encode(o.read()).decode('utf-8')
-                obj[f'img_{i}'] = img_data
+                data_url = f"data:image/png;base64,{img_data}"
+                obj[f'img_{i}'] = data_url
+
+                # img_binary = base64.b64decode(img_data)
+                # output_path = "downloaded.png"
+
+                # with open(output_path, "wb") as f:
+                #     f.write(img_binary)
+
             
             print(f'Added image {i} to obj')
         
@@ -90,6 +102,7 @@ def get_images(image):
 @csrf_exempt
 def get_assets(request):
     if request.method == 'POST':
+        
         print("hit post")
         print(request)
         
@@ -99,7 +112,7 @@ def get_assets(request):
         
         if not prompt:
             return JsonResponse({'error': 'No prompt provided.'}, status=400)
-
+        
         sender = Sender()
         sender.send(prompt)
 
@@ -108,7 +121,8 @@ def get_assets(request):
 
         receiver = Receiver()
         image = receiver.process_latest_message()
-
+        
+        # image = ["amazed_alt_i_want_a_fantasy_themed_goblins_with_swords_enemy_fo_a437d65b-e385-49de-95e4-2fc206c4cef3.png", "amazed_alt_i_want_a_fantasy_themed_goblins_with_swords_enemy_fo_a437d65b-e385-49de-95e4-2fc206c4cef3.png"]
         if image[0] and os.path.exists(image[0]):
             print("generated img")
             processed_images = get_images(image)
@@ -116,8 +130,36 @@ def get_assets(request):
         else:
             return JsonResponse({'error': 'Image not found or not downloaded yet.'}, status=404)
 
-       
-
     return JsonResponse({'error': 'Invalid HTTP method. Use POST.'}, status=405)
 
+def execute_build_script():
+    script_path = "rome-game/build.sh"
 
+    try:
+        result = subprocess.run([script_path], capture_output=True, text=True, check=False)
+
+        print("script output:", result.stdout)
+        print(f"Script stderr:\n{result.stderr}")
+        print("script response code:", result.returncode)
+
+        return True
+    except Exception as e:
+        print("Exception:", e)
+        return False
+
+@csrf_exempt
+def get_zip(request):
+    if request.method == "GET":
+        res = execute_build_script()
+        print("Hello world ")
+
+        output_path = f'rome-game/dist.zip'
+        with open(output_path, 'rb') as zip_file:
+            print("went into output_path")
+            resp = HttpResponse(zip_file.read(), content_type='application/zip')            
+
+            resp['Content-Disposition'] = f'attachment; filename="dist.zip"'
+
+            return resp
+
+        return JsonResponse({"message": f"Hello World {res}"})
