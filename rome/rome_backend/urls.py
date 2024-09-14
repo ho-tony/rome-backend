@@ -1,7 +1,12 @@
-from django.urls import path
+from django.urls import path, include
 
 from . import views
+from rome_backend.views import get_assets
+
 
 urlpatterns = [
-    path('', views.index, name='index'),  # This maps the root of /rome_backend/ to the index view
+    path('get-assets/', get_assets, name='get-assets'),
+    # path('api/', include('rome_backend.urls')),
+    # path('', views.index, name = 'index')
+    # path("", views.index, name="index"),
 ]
