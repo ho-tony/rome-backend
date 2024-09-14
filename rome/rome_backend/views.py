@@ -8,6 +8,28 @@ from midjourney.sender import Sender
 import json
 import os
 import time
+from split_image import split_image
+from rembg import remove
+from PIL import Image
+from resizeimage import resizeimage
+
+def split_image(image):
+    split_image(image[0], 2, 2, False, False, output_path="rome_backend/images")
+
+    obj = {}
+
+    for i in range(4):
+        input_path = f'rome_backend/images/{image[1]}_{i}'
+        output_path = f'rome_backend/images/output_{i}'
+
+        with open(input_path, 'rb') as i:
+            with open(output_path, 'wb') as o:
+                input = i.read()
+                output = remove(input)
+                o.write(output)
+                obj[f'img_{i}'] = o.read()
+    
+    return obj
 
 @csrf_exempt
 def index(request):
@@ -25,11 +47,12 @@ def index(request):
             time.sleep(45)  # Adjust as needed based on Discord's response time
 
             receiver = Receiver()
-            image_path = receiver.process_latest_message()
+            image= receiver.process_latest_message()
 
-            if image_path and os.path.exists(image_path):
-                with open(image_path, 'rb') as image_file:
-                    return HttpResponse(image_file.read(), content_type='image/png')
+            if image[0] and os.path.exists(image[0]):
+                return HttpResponse(json.dumps(split_image(image)))
+                # with open(image[0], 'rb') as image_file:
+                #    return HttpResponse(image_file.read(), content_type='image/png')
             else:
                 return JsonResponse({'error': 'Image not found or not downloaded yet.'}, status=404)
 
@@ -37,3 +60,4 @@ def index(request):
             return JsonResponse({'error': str(e)}, status=500)
 
     return JsonResponse({'error': 'Invalid HTTP method. Use POST.'}, status=405)
+

@@ -117,7 +117,7 @@ class Receiver:
             return None
         latest_entry = self.df.iloc[0]
         print(latest_entry)
-        return os.path.join(self.local_path, latest_entry['filename'])
+        return [os.path.join(self.local_path, latest_entry['filename']), latest_entry['filename']]
 
     def process_latest_message(self):
         self.collect_latest_message()
