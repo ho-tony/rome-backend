@@ -1,2 +1,4 @@
+assets/*
+*.png
 midjourney/sender_params.json
 __pycache__

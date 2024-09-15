@@ -20,5 +20,4 @@ from django.urls import include, path
 urlpatterns = [
     path("rome_backend/", include("rome_backend.urls")),
     path('admin/', admin.site.urls),
-
 ]

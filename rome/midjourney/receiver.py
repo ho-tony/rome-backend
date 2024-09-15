@@ -1,133 +1,125 @@
+# midjourney/receiver.py
+
 import requests
 import json
-import numpy as np
-import time
 import pandas as pd
 import os
 import re
 from datetime import datetime
-import glob
-import argparse
-import sys
+from django.conf import settings
 
 class Receiver:
-
-    def __init__(self):
-        
-        self.params = 'midjourney/sender_params.json'
-        self.local_path = '' 
+    def __init__(self, params_path='midjourney/sender_params.json', local_path='assets'):
+        self.params = params_path
+        self.local_path = local_path
+        self.processed_ids = set()
 
         self.sender_initializer()
+        self.df = pd.DataFrame(columns=['prompt', 'url', 'filename', 'is_downloaded'])
+        self.awaiting_list = pd.DataFrame(columns=['prompt', 'status'])
 
-        self.df = pd.DataFrame(columns = ['prompt', 'url', 'filename', 'is_downloaded'])
+        # Ensure the local_path exists
+        if not os.path.isdir(self.local_path):
+            os.makedirs(self.local_path, exist_ok=True)
+            print(f"Created directory: {self.local_path}")
 
-    
     def sender_initializer(self):
+        try:
+            with open(self.params, "r") as json_file:
+                params = json.load(json_file)
+        except FileNotFoundError:
+            print(f"Parameters file not found: {self.params}")
+            raise
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from the parameters file: {self.params}")
+            raise
 
-        with open(self.params, "r") as json_file:
-            params = json.load(json_file)
+        self.channelid = params.get('channelid')
+        self.authorization = params.get('authorization')
 
-        self.channelid=params['channelid']
-        self.authorization=params['authorization']
-        self.headers = {'authorization' : self.authorization}
+        if not self.channelid or not self.authorization:
+            raise ValueError("Missing 'channelid' or 'authorization' in the parameters file.")
 
-    def retrieve_messages(self):
-        r = requests.get(
-            f'https://discord.com/api/v10/channels/{self.channelid}/messages?limit={100}', headers=self.headers)
-        jsonn = json.loads(r.text)
-        return jsonn
+        self.headers = {'authorization': self.authorization}
 
+    def retrieve_messages(self, limit=10):
+        url = f'https://discord.com/api/v10/channels/{self.channelid}/messages?limit={limit}'
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching messages: {e}")
+            return []
 
-    def collecting_results(self):
-        message_list  = self.retrieve_messages()
-        self.awaiting_list = pd.DataFrame(columns = ['prompt', 'status'])
-        id_set = set()
+    def collect_latest_message(self):
+        message_list = self.retrieve_messages(limit=10)  # Fetch last 10 messages to ensure catching new ones
         status = "downloading"
+
         for message in message_list:
+            message_id = message.get('id')
+            if not message_id or message_id in self.processed_ids:
+                continue  # Skip already processed messages
 
-            if (message['author']['username'] == 'Midjourney Bot') and ('**' in message['content']):
-                
-                if len(message['attachments']) > 0:
+            author = message.get('author', {}).get('username', '')
+            content = message.get('content', '')
+            attachments = message.get('attachments', [])
 
-                    if (message['attachments'][0]['filename'][-4:] == '.png') or ('(Open on website for full quality)' in message['content']):
-                        id = message['id']
-                        if id in id_set:    
-                            continue
-                        id_set.add(id)
-                        prompt = message['content'].split('**')[1].split(' --')[0]
-                        url = message['attachments'][0]['url']
-                        filename = message['attachments'][0]['filename']
-                        if id not in self.df.index:
-                            self.df.loc[id] = [prompt, url, filename, 0]
+            if author != 'Midjourney Bot' or '**' not in content:
+                continue  # Skip irrelevant messages
 
-                    else:
-                        id = message['id']
-                        prompt = message['content'].split('**')[1].split(' --')[0]
-                        # if ('(fast)' in message['content']) or ('(relaxed)' in message['content']):
-                        #     try:
-                        #         status = re.findall("(\w*%)", message['content'])[0]
-                        #     except:
-                        #         status = 'unknown status'
-                        self.awaiting_list.loc[id] = [prompt, status]
+            self.processed_ids.add(message_id)
 
+            if attachments:
+                attachment = attachments[0]
+                filename = attachment.get('filename', '')
+                url = attachment.get('url', '')
+
+                if filename.endswith('.png') or '(Open on website for full quality)' in content:
+                    prompt = self.extract_prompt(content)
+                    if prompt:
+                        self.df.loc[message_id] = [prompt, url, filename, 0]
                 else:
-                    id = message['id']
-                    prompt = message['content'].split('**')[1].split(' --')[0]
-                    # if '(Waiting to start)' in message['content']:
-                    #     status = 'Waiting to start'
-                    self.awaiting_list.loc[id] = [prompt, status]
-                    
-    
-    def outputer(self):
-        if len(self.awaiting_list) > 0:
-            print(datetime.now().strftime("%H:%M:%S"))
-            print('prompts in progress:')
-            print(self.awaiting_list)
-            print('=========================================')
+                    prompt = self.extract_prompt(content)
+                    if prompt:
+                        self.awaiting_list.loc[message_id] = [prompt, status]
+            else:
+                prompt = self.extract_prompt(content)
+                if prompt:
+                    self.awaiting_list.loc[message_id] = [prompt, status]
 
-        waiting_for_download = [self.df.loc[i].prompt for i in self.df.index if self.df.loc[i].is_downloaded == 0]
-        if len(waiting_for_download) > 0:
-            print(datetime.now().strftime("%H:%M:%S"))
-            print('waiting for download prompts: ', waiting_for_download)
-            print('=========================================')
+    def extract_prompt(self, content):
+        try:
+            return content.split('**')[1].split(' --')[0].strip()
+        except IndexError:
+            return None
 
-    def downloading_results(self):
+    def download_latest_image(self):
         processed_prompts = []
-        for i in self.df.index:
-            if self.df.loc[i].is_downloaded == 0:
-                response = requests.get(self.df.loc[i].url)
-                with open(os.path.join(self.local_path, self.df.loc[i].filename), "wb") as req:
-                    req.write(response.content)
-                self.df.loc[i, 'is_downloaded'] = 1
-                processed_prompts.append(self.df.loc[i].prompt)
-        if len(processed_prompts) > 0:
-            print(datetime.now().strftime("%H:%M:%S"))
-            print('processed prompts: ', processed_prompts)
+        for message_id, row in self.df[self.df['is_downloaded'] == 0].iterrows():
+            try:
+                response = requests.get(row['url'])
+                response.raise_for_status()
+                filename = os.path.join(self.local_path, row['filename'])
+                with open(filename, "wb") as file:
+                    file.write(response.content)
+                self.df.loc[message_id, 'is_downloaded'] = 1
+                processed_prompts.append(row['prompt'])
+            except requests.exceptions.RequestException as e:
+                print(f"Error downloading {row['url']}: {e}")
+
+        if processed_prompts:
+            print(f"{datetime.now().strftime('%H:%M:%S')} - Processed prompts: {processed_prompts}")
             print('=========================================')
-  
-    def main(self):
-        while True:
-            self.collecting_results()
-            self.outputer()
-            self.downloading_results()
-            time.sleep(5)
 
-def parse_args(args):
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--params',        help='Path to discord authorization and channel parameters', required=True)
-    parser.add_argument('--local_path',           help='Path to output images', required=True)
-        
-    return parser.parse_args(args)
+    def get_latest_image_path(self):
+        if self.df.empty:
+            return None
+        latest_entry = self.df.iloc[0]
+        print(latest_entry)
+        return os.path.join(self.local_path, latest_entry['filename'])
 
-
-if __name__ == "__main__":
-
-    args = sys.argv[1:]
-    args = parse_args(args)
-    params = args.params
-    local_path = args.local_path #'/Users/georgeb/discord_api/images/'
-
-    print('=========== listening started ===========')
-    receiver = Receiver(params, local_path)
-    receiver.main()
+    def process_latest_message(self):
+        self.collect_latest_message()
+        self.download_latest_image()
+        return self.get_latest_image_path()
