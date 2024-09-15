@@ -16,8 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from rome_backend.views import get_assets
+
 
 urlpatterns = [
+    path('api/get-assets/', get_assets, name='get-assets'),
     path("rome_backend/", include("rome_backend.urls")),
     path('admin/', admin.site.urls),
+
 ]
