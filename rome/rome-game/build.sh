@@ -6,6 +6,12 @@ which npm
 echo "node version $(node -v)"
 echo "npm version $(npm -v)"
 
+picked=$1
+echo "running script with picked number: $picked"
+
+rm rome-game/assets/minion.png
+mv small_${picked}.png rome-game/assets/minion.png
+
 cd rome-game
 echo "cwd $(pwd)"
 

@@ -70,7 +70,7 @@ def get_images(image):
             
             # Resize image
             with Image.open(output_path) as img:
-                cover = resizeimage.resize_contain(img, [1024, 1024])
+                cover = resizeimage.resize_contain(img, [512, 512])
                 cover.save(output_path, img.format)
                 cover = resizeimage.resize_contain(img, [24, 24])
                 cover.save(f'small_{i}.png', img.format)
@@ -101,6 +101,8 @@ def get_images(image):
 
 @csrf_exempt
 def get_assets(request):
+    hardcoded = True
+
     if request.method == 'POST':
         
         print("hit post")
@@ -112,17 +114,17 @@ def get_assets(request):
         
         if not prompt:
             return JsonResponse({'error': 'No prompt provided.'}, status=400)
-        
-        sender = Sender()
-        sender.send(prompt)
+        if not hardcoded:
+            sender = Sender()
+            sender.send(prompt)
 
-        # Optional: Wait for a short duration to allow Discord to process the prompt
-        time.sleep(45)  # Adjust as needed based on Discord's response time
+            # Optional: Wait for a short duration to allow Discord to process the prompt
+            time.sleep(45)  # Adjust as needed based on Discord's response time
 
-        receiver = Receiver()
-        image = receiver.process_latest_message()
-        
-        # image = ["amazed_alt_i_want_a_fantasy_themed_goblins_with_swords_enemy_fo_a437d65b-e385-49de-95e4-2fc206c4cef3.png", "amazed_alt_i_want_a_fantasy_themed_goblins_with_swords_enemy_fo_a437d65b-e385-49de-95e4-2fc206c4cef3.png"]
+            receiver = Receiver()
+            image = receiver.process_latest_message()
+        else:
+            image = ["amazed_alt_i_want_a_roman_themed_roman_soldier_enemy_for_an_16b_490dcc13-4635-4743-83db-a45e27e9b2fd.png", "amazed_alt_i_want_a_roman_themed_roman_soldier_enemy_for_an_16b_490dcc13-4635-4743-83db-a45e27e9b2fd.png"]
         if image[0] and os.path.exists(image[0]):
             print("generated img")
             processed_images = get_images(image)
@@ -132,11 +134,12 @@ def get_assets(request):
 
     return JsonResponse({'error': 'Invalid HTTP method. Use POST.'}, status=405)
 
-def execute_build_script():
+def execute_build_script(picked):
+    print("picked in execute_build_script", picked)
     script_path = "rome-game/build.sh"
 
     try:
-        result = subprocess.run([script_path], capture_output=True, text=True, check=False)
+        result = subprocess.run([script_path, str(picked)], capture_output=True, text=True, check=False)
 
         print("script output:", result.stdout)
         print(f"Script stderr:\n{result.stderr}")
@@ -149,8 +152,15 @@ def execute_build_script():
 
 @csrf_exempt
 def get_zip(request):
-    if request.method == "GET":
-        res = execute_build_script()
+    print("request:", request)
+
+    if request.method == "POST":
+        print("request", request)
+        data = json.loads(request.body)
+        picked = data["picked"]
+        print("picked", picked)
+
+        res = execute_build_script(picked)
         print("Hello world ")
 
         output_path = f'rome-game/dist.zip'
